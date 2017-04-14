@@ -9,7 +9,13 @@
 import PerfectLib
 import PerfectHTTP
 import PerfectHTTPServer
+import MySQL
 
+fileprivate let mysql_host = "localhost"
+fileprivate let mysql_user = "root"
+fileprivate let mysql_pwd = ""
+fileprivate let mysql_db = "test"
+fileprivate let mysql_socket = "/tmp/mysql.sock"
 
 func resignRoutes() {
     routes.add(method: .get, uri: "/") { (req, resp) in
@@ -63,6 +69,95 @@ func resignRoutes() {
         let handler = StaticFileHandler(documentRoot: server.documentRoot)
         handler.handleRequest(request: req, response: resp)
     }
+    
+    routes.add(method: .get, uri: "/mysql") { (req, resp) in
+        let dataMysql = MySQL()  // create an instance of mySQL to work with
+        
+        // connect to database
+        let connect = dataMysql.connect(host: mysql_host, user: mysql_user, password: mysql_pwd, db: mysql_db, socket: mysql_socket)
+        
+        guard connect else {
+            // failed to connect database
+            print(dataMysql.errorMessage())
+            return
+        }
+        
+        defer {
+            // close database when already used
+            dataMysql.close()
+        }
+        
+        // create tables
+        let sql = "create table if not exists person (id integer primary key AUTO_INCREMENT, name varchar(50), age int)"
+        if (dataMysql.query(statement: sql)){
+            print("Success")
+            resp.appendBody(string: "connect mysql success!")
+            resp.completed()
+        }
+    }
+    
+    routes.add(method: .get, uri: "/mysql/add") { (req, resp) in
+        let dataMysql = MySQL()
+        
+        let connect = dataMysql.connect(host: mysql_host, user: mysql_user, password: mysql_pwd, db: mysql_db, socket: mysql_socket)
+        guard connect else {
+            print(dataMysql.errorMessage())
+            return
+        }
+        defer {
+            dataMysql.close()
+        }
+        
+        let name:String = req.param(name: "name") ?? ""
+        let age:Int = Int(req.param(name: "age") ?? "0")!
+        
+        let sql = "insert into person (name,age) values (\(name),\(age))"
+        
+        if (dataMysql.query(statement: sql)){
+            resp.appendBody(string: "insert person success")
+        } else {
+            resp.appendBody(string: "fail to insert person")
+        }
+        resp.completed()
+    }
+    
+    routes.add(method: .get, uri: "/mysql/query") { (req, resp) in
+        let dataMysql = MySQL()
+        let connect = dataMysql.connect(host: mysql_host, user: mysql_user, password: mysql_pwd, db: mysql_db, socket: mysql_socket)
+        
+        guard connect else {
+            resp.appendBody(string: dataMysql.errorMessage())
+            resp.completed()
+            return
+        }
+        
+        defer {
+            dataMysql.close()
+        }
+        
+        let sql = "select * from person"
+        if(dataMysql.query(statement: sql)){
+            let results = dataMysql.storeResults()
+            var person:[[String:Any]] = [[String:Any]]()
+            results?.forEachRow(callback: { (element) in
+                let person_id:Int = Int(element[0] ?? "0")!
+                let person_name:String = element[1]!
+                let person_age:Int = Int(element[2] ?? "0")!
+                person.append(["id":person_id,"name":person_name,"age":person_age])
+            })
+            
+            let respResult = ["psersons":person]
+            do {
+                try resp.appendBody(string: respResult.jsonEncodedString())
+            } catch {
+                print(error)
+            }
+        } else {
+            resp.appendBody(string: "操作出现错误")
+        }
+        resp.completed()
+    }
+
     
     // 文件上传
     routes.add(method: .post, uri: "/upload") { (req, resp) in
