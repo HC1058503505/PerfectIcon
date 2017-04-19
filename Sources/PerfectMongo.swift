@@ -53,7 +53,7 @@ func resignRoutes() {
         
         let thisFile = File(server.documentRoot + "/info.txt")
         do {
-            try thisFile.open(.readWrite)
+            try thisFile.open(.append)
             try thisFile.write(string: json)
         }catch {
             print(error)
